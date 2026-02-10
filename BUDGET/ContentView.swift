@@ -6,86 +6,60 @@
 //
 
 import SwiftUI
-import CoreData
-//ADDING TEST COMMENT
-
-//secondary test
-
-
 
 struct ContentView: View {
-    @Environment(\.managedObjectContext) private var viewContext
-
-    @FetchRequest(
-        sortDescriptors: [NSSortDescriptor(keyPath: \Item.timestamp, ascending: true)],
-        animation: .default)
-    private var items: FetchedResults<Item>
-
+    @State private var amount = ""
+    @State private var category = ""
+    @State private var expenses: [Expense] = []
+    
     var body: some View {
-        NavigationView {
-            List {
-                ForEach(items) { item in
-                    NavigationLink {
-                        Text("Item at \(item.timestamp!, formatter: itemFormatter)")
-                    } label: {
-                        Text(item.timestamp!, formatter: itemFormatter)
+        NavigationStack {
+            VStack {
+                // Input Form
+                VStack(spacing: 15) {
+                    TextField("Amount", text: $amount)
+                        .textFieldStyle(.roundedBorder)
+                        .keyboardType(.decimalPad)
+                    
+                    TextField("Category", text: $category)
+                        .textFieldStyle(.roundedBorder)
+                    
+                    Button("Add Expense") {
+                        if let amountValue = Double(amount) {
+                            let expense = Expense(amount: amountValue, category: category)
+                            expenses.append(expense)
+                            amount = ""
+                            category = ""
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+                .padding()
+                
+                // List of Expenses
+                List(expenses) { expense in
+                    HStack {
+                        Text(expense.category)
+                        Spacer()
+                        Text("$\(expense.amount, specifier: "%.2f")")
+                            .fontWeight(.bold)
                     }
                 }
-                .onDelete(perform: deleteItems)
             }
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    EditButton()
-                }
-                ToolbarItem {
-                    Button(action: addItem) {
-                        Label("Add Item", systemImage: "plus")
-                    }
-                }
-            }
-            Text("Select an item")
-        }
-    }
-
-    private func addItem() {
-        withAnimation {
-            let newItem = Item(context: viewContext)
-            newItem.timestamp = Date()
-
-            do {
-                try viewContext.save()
-            } catch {
-                // Replace this implementation with code to handle the error appropriately.
-                // fatalError() causes the application to generate a crash log and terminate. You should not use this function in a shipping application, although it may be useful during development.
-                let nsError = error as NSError
-                fatalError("Unresolved error \(nsError), \(nsError.userInfo)")
-            }
-        }
-    }
-
-    private func deleteItems(offsets: IndexSet) {
-        withAnimation {
-            offsets.map { items[$0] }.forEach(viewContext.delete)
-
-            do {
-                try viewContext.save()
-            } catch {
-                // Replace this implementation with code to handle the error appropriately.
-                // fatalError() causes the application to generate a crash log and terminate. You should not use this function in a shipping application, although it may be useful during development.
-                let nsError = error as NSError
-                fatalError("Unresolved error \(nsError), \(nsError.userInfo)")
-            }
+            .navigationTitle("Budget Tracker")
         }
     }
 }
 
-private let itemFormatter: DateFormatter = {
-    let formatter = DateFormatter()
-    formatter.dateStyle = .short
-    formatter.timeStyle = .medium
-    return formatter
-}()
+// Simple Expense struct
+struct Expense: Identifiable {
+    let id = UUID()
+    let amount: Double
+    let category: String
+    let date = Date()
+    
+}
 
 #Preview {
-    ContentView().environment(\.managedObjectContext, PersistenceController.preview.container.viewContext)
+    ContentView()
 }
