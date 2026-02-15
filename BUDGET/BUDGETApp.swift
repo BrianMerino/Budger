@@ -6,13 +6,15 @@
 //
 
 import SwiftUI
+import SwiftData
 
 @main
 struct BUDGETApp: App {
     
     var body: some Scene {
         WindowGroup {
-            HomeScreen(firstName : "Brian")
+            HomeScreen()
         }
+        .modelContainer(for: [Account.self, Transaction.self, BudgetCategory.self])
     }
 }
