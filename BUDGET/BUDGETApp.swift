@@ -12,7 +12,7 @@ struct BUDGETApp: App {
     
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            HomeScreen(firstName : "Brian")
         }
     }
 }

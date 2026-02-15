@@ -25,6 +25,7 @@ struct ContentView: View {
                         .textFieldStyle(.roundedBorder)
                     
                     Button("Add Expense") {
+                        //Attempt to convert what the user entered in the amount category to a double
                         if let amountValue = Double(amount) {
                             let expense = Expense(amount: amountValue, category: category)
                             expenses.append(expense)
