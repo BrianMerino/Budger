@@ -10,187 +10,330 @@ import SwiftData
 
 struct HomeScreen: View {
     @Query private var accounts: [Account]
+    @Query private var payPeriods: [PayPeriod]
+    @Query private var recurringBills: [RecurringBill]
+    @Query private var userSettings: [UserSettings]
+    
     @Environment(\.modelContext) private var modelContext
+    
+    var currentPayPeriod: PayPeriod? {
+        payPeriods.first(where: { $0.isCurrent })
+    }
+    
+    var billsDueThisPeriod: [RecurringBill] {
+        guard let period = currentPayPeriod else { return[] }
+        return recurringBills.filter { bill in
+            bill.isActive && bill.isDueIn(startDate: period.startDate, endDate: period.endDate)
+        }
+    }
+    
+    var totalBillsAmount: Double {
+        billsDueThisPeriod.reduce(0) { $0 + $1.amount }
+    }
+    
+    var discretionaryBudget: Double {
+        guard let period = currentPayPeriod else { return 0 }
+        return period.income - totalBillsAmount - period.totalSpent
+    }
     
     
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(spacing: 20){
-                    if accounts.isEmpty{
-                        //new user
-                        emptyStateView
+            NavigationStack {
+                ScrollView {
+                    VStack(spacing: 20) {
+                        if currentPayPeriod == nil {
+                            setupNeededView
+                        } else {
+                            currentPeriodOverview
+                            billsSection
+                            discretionarySpendingCard
+                            currentPeriodTransactions
+                        }
                     }
-                    else{
-                        //Show user account information
-                        accountBalanceCard
-                        totalSpentCard
-                        transactionHistorySection
+                    .padding()
+                }
+                .navigationTitle("Budget Tracker")
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Menu {
+                            NavigationLink("Pay Period Settings") {
+                                PayPeriodSettingsView()
+                            }
+                            
+                            NavigationLink("Manage Bills") {
+                                BillsManagementView()
+                            }
+                            
+                            Button("Add Test Data") {
+                                createTestData()
+                            }
+                            
+                            Button("Delete All", role: .destructive) {
+                                deleteAllData()
+                            }
+                        } label: {
+                            Image(systemName: "ellipsis.circle")
+                        }
                     }
                 }
-                .padding()
             }
-            .navigationTitle("Budget Tracker")
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
-                        createTestData()
-                    } label: {
-                        Label("Add Test Data", systemImage: "plus")
+        }
+    
+    private var setupNeededView: some View {
+            VStack(spacing: 20) {
+                Image(systemName: "calendar.badge.clock")
+                    .font(.system(size: 60))
+                    .foregroundStyle(.blue)
+                
+                Text("Set Up Your Pay Period")
+                    .font(.title2)
+                    .fontWeight(.bold)
+                
+                Text("Tell us when you get paid to start budgeting")
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                
+                NavigationLink {
+                    PayPeriodSetupView()
+                } label: {
+                    Text("Get Started")
+                        .fontWeight(.semibold)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.blue)
+                        .foregroundColor(.white)
+                        .cornerRadius(10)
+                }
+            }
+            .padding()
+        }
+    
+    private var currentPeriodOverview: some View {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Current Pay Period")
+                            .font(.headline)
+                            .foregroundStyle(.secondary)
+                        
+                        if let period = currentPayPeriod {
+                            Text("\(period.startDate, style: .date) - \(period.endDate, style: .date)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                     
-                }
-                
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button{
-                        for account in accounts {
-                            modelContext.delete(account)
+                    Spacer()
+                    
+                    VStack(alignment: .trailing, spacing: 4) {
+                        Text("Income")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        
+                        if let period = currentPayPeriod {
+                            Text("$\(period.income, specifier: "%.2f")")
+                                .font(.title3)
+                                .fontWeight(.bold)
+                                .foregroundColor(.green)
                         }
-                        try? modelContext.save()
                     }
-                    label : {
-                        Label("Delete All Data", systemImage: "trash")
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding()
+            .background(Color.green.opacity(0.1))
+            .cornerRadius(12)
+        }
+    
+    private var billsSection: some View {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Text("Bills Due This Period")
+                        .font(.headline)
+                    
+                    Spacer()
+                    
+                    NavigationLink {
+                        BillsManagementView()
+                    } label: {
+                        Text("Manage")
+                            .font(.caption)
+                            .foregroundColor(.blue)
                     }
                 }
                 
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button{
-                        print("Accounts in database:")
-                            for account in accounts {
-                                print("- \(account.name): $\(account.balance)")
-                                print("  Transactions: \(account.transactions.count)")
+                if billsDueThisPeriod.isEmpty {
+                    Text("No bills due")
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                } else {
+                    VStack(spacing: 8) {
+                        ForEach(billsDueThisPeriod, id: \.id) { bill in
+                            HStack {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(bill.name)
+                                        .font(.subheadline)
+                                        .fontWeight(.medium)
+                                    
+                                    Text("Due on day \(bill.dueDay)")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                
+                                Spacer()
+                                
+                                Text("$\(bill.amount, specifier: "%.2f")")
+                                    .font(.subheadline)
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(.red)
                             }
-                    }
-                    label : {
-                        Label("Print All Data", systemImage: "printer")
+                            .padding()
+                            .background(Color(.systemBackground))
+                            .cornerRadius(8)
+                        }
+                        
+                        Divider()
+                        
+                        HStack {
+                            Text("Total Bills")
+                                .fontWeight(.semibold)
+                            Spacer()
+                            Text("$\(totalBillsAmount, specifier: "%.2f")")
+                                .fontWeight(.bold)
+                                .foregroundColor(.red)
+                        }
+                        .padding(.horizontal)
                     }
                 }
             }
+            .padding()
+            .background(Color.red.opacity(0.05))
+            .cornerRadius(12)
         }
-    }
-    
-    //New user or no activity ever
-    private var emptyStateView: some View{
-        VStack(spacing: 20) {
-            Image(systemName: "banknote")
-                .font(.system(size: 60))
-                .foregroundStyle(.blue)
-            
-            Text("No account yet")
-                .font(.title2)
-                .fontWeight(.bold)
-            
-            Text("Tap the + button to add test data")
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-        }
-        .padding()
-    }
-    
-    //Top card displaying overall checking account
-    private var accountBalanceCard: some View{
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Checking Account")
-                .font(.headline)
-                .foregroundStyle(.secondary)
-            
-            if let checkingAccount = accounts.first(where: { $0.type == .checking }) {
-                Text("$\(checkingAccount.balance, specifier: "%.2f")")
-                    .font(.system(size:42, weight: .bold))
+        
+        //discretionary spending
+        private var discretionarySpendingCard: some View {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Available for Spending")
+                    .font(.headline)
+                    .foregroundStyle(.secondary)
                 
-                Text("Last updated: \(checkingAccount.lastUpdated, style: .date)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Text("$\(discretionaryBudget, specifier: "%.2f")")
+                    .font(.system(size: 36, weight: .bold))
+                    .foregroundColor(discretionaryBudget >= 0 ? .blue : .red)
+                
+                if let period = currentPayPeriod {
+                    HStack(spacing: 20) {
+                        VStack(alignment: .leading) {
+                            Text("Income")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Text("$\(period.income, specifier: "%.2f")")
+                                .font(.subheadline)
+                                .foregroundColor(.green)
+                        }
+                        
+                        VStack(alignment: .leading) {
+                            Text("Bills")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Text("$\(totalBillsAmount, specifier: "%.2f")")
+                                .font(.subheadline)
+                                .foregroundColor(.orange)
+                        }
+                        
+                        VStack(alignment: .leading) {
+                            Text("Spent")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Text("$\(period.totalSpent, specifier: "%.2f")")
+                                .font(.subheadline)
+                                .foregroundColor(.red)
+                        }
+                    }
+                }
+                
+                Button {
+                    // add a transaction
+                } label: {
+                    Label("Add Transaction", systemImage: "plus.circle.fill")
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.blue)
+                        .foregroundColor(.white)
+                        .cornerRadius(10)
+                }
             }
-            else{
-                Text("$0.00")
-                    .font(.system(size: 42, weight: .bold))
-                    .foregroundStyle(.secondary)
-            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding()
+            .background(Color.blue.opacity(0.1))
+            .cornerRadius(12)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding()
-        .background(Color.blue.opacity(0.1))
-        .cornerRadius(12)
-    }
-    
-    private var transactionHistorySection: some View {
-        VStack(alignment: .leading, spacing: 12){
-            Text("Recent Transactions")
-                .font(.headline)
-                .padding(.horizontal, 4)
-            
-            if allTransactions.isEmpty {
-                Text("No transactions yet")
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity)
-                    .padding()
-            } else{
-                ForEach(allTransactions) { transaction in
-                    TransactionRow(transaction: transaction)
+        
+        //show current period transactions
+        private var currentPeriodTransactions: some View {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("This Period's Transactions")
+                    .font(.headline)
+                
+                if let period = currentPayPeriod, !period.transactions.isEmpty {
+                    ForEach(period.transactions.sorted(by: { $0.date > $1.date })) { transaction in
+                        TransactionRow(transaction: transaction)
+                    }
+                } else {
+                    Text("No transactions yet")
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity)
+                        .padding()
                 }
             }
         }
-    }
-    
-    private var allTransactions: [Transaction] {
-        accounts
-            .flatMap { $0.transactions }
-            .sorted { $0.date > $1.date }
-    }
-    
-    private var totalSpentCard: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text("Total Spent This Month")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-            
-            Text("$\(totalSpent, specifier: "%.2f")")
-                .font(.system(size: 28, weight: .semibold))
-                .foregroundColor(.red)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding()
-        .background(Color.red.opacity(0.05))
-        .cornerRadius(12)
-    }
-    
-    
-    private var totalSpent: Double {
-        let calendar = Calendar.current
-        let now = Date()
-        
-        return allTransactions
-            .filter { transaction in
-                // Only counting expenses, not income
-                transaction.amount < 0 &&
-                // Only count this month
-                calendar.isDate(transaction.date, equalTo: now, toGranularity: .month)
-            }
-            .reduce(0) { $0 + abs($1.amount) }
-    }
-    
-    private func createTestData(){
-        let checking = Account(
-            name: "Chase Checking",
-            type: .checking,
-            balance: 2543.67
-        )
-        
-        let groceries = Transaction(amount: -87.32, category: "Groceries", merchantName: "Whole Foods", date: Date().addingTimeInterval(-86400 * 2))
 
-        let gas = Transaction(amount: -45.00, category: "Transportation", merchantName: "Shell Gas Station", date: Date().addingTimeInterval(-86400 * 5))
-        
-        let restaurant = Transaction(amount: -62.50, category: "Restaurant", merchantName: "Stock & Barrel", date: Date().addingTimeInterval(-86400 * 1))
-        
-        let paycheck = Transaction(amount: 3000.00, category: "Income", merchantName: "Direct Deposit", date: Date().addingTimeInterval(-86400 * 7))
-        
-        checking.transactions = [groceries, gas, restaurant, paycheck]
-        
-        //save to database
-        modelContext.insert(checking)
-        try? modelContext.save()
-    }
+    
+    private func createTestData() {
+            // create current pay period
+            let startDate = Calendar.current.date(byAdding: .day, value: -7, to: Date())!
+            let endDate = Calendar.current.date(byAdding: .day, value: 7, to: Date())!
+            
+            let period = PayPeriod(startDate: startDate, endDate: endDate, income: 2000, isCurrent: true)
+            
+            // add some bills
+            let rent = RecurringBill(name: "Rent", amount: 800, dueDay: 1, category: "Housing")
+            let netflix = RecurringBill(name: "Netflix", amount: 15.99, dueDay: 5, category: "Entertainment")
+            let carInsurance = RecurringBill(name: "Car Insurance", amount: 120, dueDay: 10, category: "Transportation")
+            
+            // add some transactions
+            let groceries = Transaction(amount: -87.32, category: "Groceries", merchantName: "Whole Foods", date: Date().addingTimeInterval(-86400 * 2))
+            let gas = Transaction(amount: -45.00, category: "Transportation", merchantName: "Shell", date: Date().addingTimeInterval(-86400 * 3))
+            
+            groceries.payPeriod = period
+            gas.payPeriod = period
+            period.transactions = [groceries, gas]
+            
+            modelContext.insert(period)
+            modelContext.insert(rent)
+            modelContext.insert(netflix)
+            modelContext.insert(carInsurance)
+            
+            try? modelContext.save()
+        }
+    
+    private func deleteAllData() {
+            for account in accounts {
+                modelContext.delete(account)
+            }
+            for period in payPeriods {
+                modelContext.delete(period)
+            }
+            for bill in recurringBills {
+                modelContext.delete(bill)
+            }
+            for settings in userSettings {
+                modelContext.delete(settings)
+            }
+            try? modelContext.save()
+        }
 }
 
 struct TransactionRow: View {
@@ -242,5 +385,5 @@ struct TransactionRow: View {
 
 #Preview {
     HomeScreen()
-        .modelContainer(for: [Account.self, Transaction.self])
+        .modelContainer(for: [Account.self, Transaction.self, PayPeriod.self, RecurringBill.self, UserSettings.self])
 }

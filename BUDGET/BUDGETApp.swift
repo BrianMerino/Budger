@@ -15,6 +15,6 @@ struct BUDGETApp: App {
         WindowGroup {
             HomeScreen()
         }
-        .modelContainer(for: [Account.self, Transaction.self, BudgetCategory.self])
+        .modelContainer(for: [Account.self, Transaction.self, BudgetCategory.self, PayPeriod.self, RecurringBill.self, UserSettings.self])
     }
 }
